@@ -15,7 +15,7 @@ const SONG_META = {
         artist: "ABC",
         title: "The Look of Love"
     },
-    PLAYLIST_NAME = "My 80s",
+    PLAYLIST_NAME = "80s dev",
     USER_ID = "odiroot";
 
 
@@ -83,7 +83,27 @@ function _isSongInPlaylist(songMeta, playlistName) {
         return contentIds.has(song.id);
     });
 }
-// TODO: Either memoization for heavy lookups / cache in state.
+
+/* TODO: Wrapping this up.
+    0.1. Refresh access token on startup.
+    0.2. Fetch user object for user ID (optionally use parameter).
+
+    1. Prepare context (ugh, state!) with target playlist songs.
+        1.1. Possibly throw the playlist content into map (by id).
+    2. Look for songs by their metadata.
+    3. Check found song ID (in-memory) against playlist content.
+        3.1. Gather together songs missing from playlist.
+    4. Add missing songs in bulk to the playlist.
+
+    5*. Separate source playlist from target playlist.
+    6*. Check against both source and target playlist (avoid adding duplicates).
+
+    7. Add CLI arguments.
+        7.1. Song list input file.
+        7.2. Target playlist name.
+        7.3. Source playlist name.
+        7.4. Optional username.
+*/
 
 
 module.exports = function run() {
@@ -91,8 +111,13 @@ module.exports = function run() {
     //     .then((data) => console.log(data.body));
 
     _isSongInPlaylist(SONG_META, PLAYLIST_NAME).then(
-        result => console.log(`${SONG_META.artist} - ${SONG_META.title}
-                              in ${PLAYLIST_NAME}:`, result),
+        result => {
+            if(result) {
+                console.log("Song already in playlist");
+            } else {
+                console.log("TODO: Add song to the playlist.");
+            }
+        },
         err => console.error(err)
     );
 };
