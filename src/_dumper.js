@@ -6,12 +6,11 @@ const parser = require("./parser"),
     argv = require("minimist")(process.argv.slice(2), {
         string: ["station", "output", "interval"],
         alias: {
-            "s": "station",
-            "o": "output",
-            "i": "interval"
+            "u": "url",  // The URL of song history page.
+            "o": "output",  // File to write to.
+            "i": "interval"  // Time between history refreshes.
         },
         default: {
-            "station": "u80s",
             "output": "./songs.txt",
             "interval": "120"
         }
@@ -19,8 +18,16 @@ const parser = require("./parser"),
 
 
 function fetch() {
-    const URL = `http://somafm.com/${argv.station}/songhistory.html`;
-    return request(URL)
+    if(!argv.url) {
+        throw new Error("Song history page URL not provided");
+    }
+
+    return request({
+            uri: argv.url,
+            headers: {
+                "User-Agent": "Mozilla/5.0"
+            }
+        })
         .catch(console.error);
 }
 

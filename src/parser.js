@@ -6,24 +6,24 @@ function loadSource(html) {
     return $;
 }
 
+// Adjusted for SHOUTcast format.
 function getRows($) {
-    const rows = $("table tr").slice(2);
+    // TODO: Add option for variable selector.
+    const rows = $("table").eq(2).find("tr").slice(1);
     return rows;
 }
 
 function extractTrackInfo(row, $) {
-    const artist = $("td", row).eq(1).find("a").text(),
-        title = $("td", row).eq(2).text(),
-        album = $("td", row).eq(3).find("a").text();
+    const text = $("td", row).eq(1).text(),
+        [artist, title] = text.split("-");
 
-    if(!artist) {
+    if(!artist || !title) {
         return null;
     }
 
     return {
-        artist: artist,
-        title: title,
-        album: album
+        artist: artist.trim(),
+        title: title.trim()
     };
 }
 
