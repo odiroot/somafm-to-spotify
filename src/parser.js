@@ -15,7 +15,7 @@ function getRows($) {
 
 function extractTrackInfo(row, $) {
     const text = $("td", row).eq(1).text(),
-        [artist, title] = text.split("-");
+        [artist, title] = text.split(" - ");
 
     if(!artist || !title) {
         return null;
