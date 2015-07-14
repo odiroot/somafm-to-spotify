@@ -1,6 +1,5 @@
 const Spotify = require("spotify-web-api-node");
 
-
 const api = new Spotify({
     clientId: process.env.SPOTIFY_CLIENT_ID,
     clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
@@ -9,14 +8,17 @@ const api = new Spotify({
     redirectUri: "http://www.example.com/callback"
 });
 
-
-// XXX: Static data for development.
-const SONG_META = {
-        artist: "ABC",
-        title: "The Look of Love"
+const argv = require("minimist")(process.argv.slice(2), {
+    string: ["input", "playlist", "user"],
+    alias: {
+        "i": "input",  // Song list - JSON separated by newlines.
+        "p": "playlist",  // Spotify playlist to save to.
+        "u": "user"  // Spotify user ID.
     },
-    PLAYLIST_NAME = "80s dev",
-    USER_ID = "odiroot";
+    default: {
+        "input": "./songs.txt"
+    }
+});
 
 
 // Get first song found for given meta data.
@@ -32,20 +34,19 @@ function findSong(meta) {
 }
 
 
-function findPlaylist(name) {
-    return api.getUserPlaylists(USER_ID)
-        .then((data) => data.body.items)
-        .then(playlists => playlists.find(
+function findPlaylist(user, name) {
+    return api.getUserPlaylists(user)
+        .then(data => data.body.items.find(
             list => list.name === name
         ));
 }
 
 
 // Combine playlist tracks from all pages.
-function getAllPlaylistTracks(id) {
+function getAllPlaylistTracks(playlist) {
     // Fetch page and move forward if not the last.
     function _fetch(offset=0, store=[]) {
-        return api.getPlaylistTracks(USER_ID, id, { offset })
+        return api.getPlaylistTracks(playlist.owner.id, playlist.id, { offset })
             .then(function(data) {
                 let {items, next, limit} = data.body;
                 store = [...store, ...items];
@@ -64,60 +65,102 @@ function getAllPlaylistTracks(id) {
 }
 
 
-function getPlaylistContent(name) {
-    return findPlaylist(name)
-        .then(list => getAllPlaylistTracks(list.id));
+function getPlaylistWithContent(user, name) {
+    return findPlaylist(user, name).then(
+        playlist => getAllPlaylistTracks(playlist).then(
+            content => ({ playlist, content })
+        )
+    );
 }
 
-// XXX: Really inefficient - just PoC.
-function _isSongInPlaylist(songMeta, playlistName) {
-    return Promise.all([
-        findSong(songMeta),
-        getPlaylistContent(playlistName)
-    ]).then(function([song, content]) {
-        // For faster lookup.
-        const contentIds = new Set(
-            content.map(s => s.track.id)
-        );
 
-        return contentIds.has(song.id);
+function addToPlaylist(playlist, songs) {
+    // Ignore empty results.
+    const newUris = songs
+        .filter(s => !!s)
+        .map(s => s.uri);
+
+    // Nothing to do
+    if(!newUris.length) {
+        return 0;
+    }
+
+    return api.addTracksToPlaylist(playlist.owner.id, playlist.id, newUris)
+        .then(() => newUris.length);
+}
+
+
+function isSongNew(known, meta) {
+    return findSong(meta).then(track => {
+        if(!known.has(track.id)) {
+            return track;
+        }
     });
 }
 
-/* TODO: Wrapping this up.
-    0.1. Refresh access token on startup.
-    0.2. Fetch user object for user ID (optionally use parameter).
 
-    1. Prepare context (ugh, state!) with target playlist songs.
-        1.1. Possibly throw the playlist content into map (by id).
-    2. Look for songs by their metadata.
-    3. Check found song ID (in-memory) against playlist content.
-        3.1. Gather together songs missing from playlist.
-    4. Add missing songs in bulk to the playlist.
+function updatePlaylist(user, name, songs) {
+    return getPlaylistWithContent(user, name).then(({playlist, content}) => {
+        const knownIds = new Set(
+            content.map(t => t.track.id)
+        );
 
-    5*. Separate source playlist from target playlist.
-    6*. Check against both source and target playlist (avoid adding duplicates).
+        // Gather discovered songs.
+        const found = songs.map(
+            desc => isSongNew(knownIds, desc)
+        );
 
-    7. Add CLI arguments.
-        7.1. Song list input file.
-        7.2. Target playlist name.
-        7.3. Source playlist name.
-        7.4. Optional username.
-*/
+        return Promise.all(found).then(
+            values => addToPlaylist(playlist, values)
+        );
+    });
+}
+
+
+function loadSongsMeta() {
+    // TODO: Implement actual reading from file.
+    // const input = argv.input;
+    return Promise.resolve([
+        {
+            "artist": "ABC",
+            "title": "The Look of Love"
+        },
+        {
+            "artist": "Spandau Ballet",
+            "title": "True"
+        }
+    ]);
+}
+
+
+function getPreferredUser() {
+    // Use custom if provided
+    if(!!argv.user) {
+        return Promise.resolve(argv.user);
+    } else {
+        return api.getMe().then(data => data.body.id);
+    }
+}
 
 
 module.exports = function run() {
-    // api.refreshAccessToken()
-    //     .then((data) => console.log(data.body));
+    if(!argv.playlist) {
+        throw new Error("Please provide playlist name.");
+    }
 
-    _isSongInPlaylist(SONG_META, PLAYLIST_NAME).then(
-        result => {
-            if(result) {
-                console.log("Song already in playlist");
-            } else {
-                console.log("TODO: Add song to the playlist.");
-            }
-        },
-        err => console.error(err)
+    const pInput = loadSongsMeta();
+
+    // Refresh the access token just to be sure.
+    const pUser = api.refreshAccessToken().then(data => {
+        api.setAccessToken(data.body["access_token"]);
+        // We need user ID to access playlists.
+        return getPreferredUser();
+    });
+
+    Promise.all([pInput, pUser]).then(([songs, user]) => {
+        return updatePlaylist(user, argv.playlist, songs);
+    }).then(
+        count => console.log("Success! Added songs:", count),
+        err => console.error("Error in sync process:", err)
     );
 };
