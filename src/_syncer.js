@@ -1,4 +1,5 @@
-const Spotify = require("spotify-web-api-node");
+const fs = require("fs"),
+      Spotify = require("spotify-web-api-node");
 
 const api = new Spotify({
     clientId: process.env.SPOTIFY_CLIENT_ID,
@@ -92,6 +93,11 @@ function addToPlaylist(playlist, songs) {
 
 function isSongNew(known, meta) {
     return findSong(meta).then(track => {
+        if(!track) {
+            console.log(`Song not found ${meta.artist} - ${meta.title}`);
+            return;
+        }
+
         if(!known.has(track.id)) {
             return track;
         }
@@ -118,18 +124,13 @@ function updatePlaylist(user, name, songs) {
 
 
 function loadSongsMeta() {
-    // TODO: Implement actual reading from file.
-    // const input = argv.input;
-    return Promise.resolve([
-        {
-            "artist": "ABC",
-            "title": "The Look of Love"
-        },
-        {
-            "artist": "Spandau Ballet",
-            "title": "True"
-        }
-    ]);
+    const content = fs.readFileSync(argv.input, {encoding: "utf8"}),
+        lines = content.split("\n")
+            .map(l => l.trim())
+            .filter(l => !!l),
+        songs = lines.map(l => JSON.parse(l));
+
+    return songs;
 }
 
 
@@ -148,16 +149,17 @@ module.exports = function run() {
         throw new Error("Please provide playlist name.");
     }
 
-    const pInput = loadSongsMeta();
+    const songs = loadSongsMeta();
+    if(!songs.length) {
+        throw new Error("Empty song list.");
+    }
 
     // Refresh the access token just to be sure.
-    const pUser = api.refreshAccessToken().then(data => {
+    api.refreshAccessToken().then(data => {
         api.setAccessToken(data.body["access_token"]);
         // We need user ID to access playlists.
         return getPreferredUser();
-    });
-
-    Promise.all([pInput, pUser]).then(([songs, user]) => {
+    }).then(user => {
         return updatePlaylist(user, argv.playlist, songs);
     }).then(
         count => console.log("Success! Added songs:", count),
