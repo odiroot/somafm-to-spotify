@@ -11,8 +11,8 @@ const parser = require("./parser"),
             "i": "interval"  // Time between history refreshes.
         },
         default: {
-            "output": "./songs.txt",
-            "interval": "120"
+            "output": null,
+            "interval": null
         }
     });
 
@@ -56,7 +56,7 @@ function registerSongs(store, songs) {
 }
 
 function watcher(store, callback) {
-    console.log("Fetching playlist state...");
+    console.error("Fetching playlist state...");
 
     getCurrentPlaylist()
         .then((songs) => registerSongs(store, songs))
@@ -65,14 +65,19 @@ function watcher(store, callback) {
 
 function writer(newSongs) {
     if(!newSongs.length) {
-        return console.log("No new songs");
+        return console.error("No new songs");
     }
 
-    console.log(`Writing ${newSongs.length} fresh songs`);
-
     // Every line is a JSON of a single song.
-    let content = newSongs.map(JSON.stringify);
-    fs.appendFile(argv.output, content.join("\n") + "\n");
+    let lines = newSongs.map(JSON.stringify),
+        content = lines.join("\n") + "\n";
+
+    if(!!argv.output) {
+        console.error(`Writing ${newSongs.length} fresh songs`);
+        fs.appendFile(argv.output, content);
+    } else {
+        console.log(content);
+    }
 }
 
 function readInitial() {
@@ -93,13 +98,21 @@ function readInitial() {
 }
 
 function run() {
-    let interval = Number.parseInt(argv.interval) * 1000,
-        seen = readInitial();  // Cache of processed songs.
+    let seen = readInitial();
 
-    console.log(`Read ${seen.size} previously stored songs`);
+    if(seen.length) {
+        console.error(`Read ${seen.size} previously stored songs`);
+    }
 
-    // Run continuously watching for new songs.
-    runInterval(() => watcher(seen, writer), interval);
+    // One shot.
+    if(!argv.interval) {
+        return watcher(seen, writer);
+    } else {  
+        let interval = Number.parseInt(argv.interval) * 1000;
+    
+        // Run continuously watching for new songs.
+        runInterval(() => watcher(seen, writer), interval);
+    }
 }
 
 
