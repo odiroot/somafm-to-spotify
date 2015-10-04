@@ -75,9 +75,8 @@ function writer(newSongs) {
     if(!!argv.output) {
         console.error(`Writing ${newSongs.length} fresh songs`);
         fs.appendFile(argv.output, content);
-    } else {
-        console.log(content);
     }
+    console.log(content);
 }
 
 function readInitial() {
